@@ -1,0 +1,47 @@
+# This worflow is triggered on push to main, pull request, or by manual invocation.
+# It builds and unit tests the codebase.
+name: Build and Unit Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  build: # Test, pack and publish the Open AI nuget package as a build artifact 
+    name: Build
+    runs-on: ubuntu-latest
+    env:
+      version_suffix_args: ${{ format('/p:VersionSuffix="alpha.{0}"', github.run_number) }}
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.x'
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Build and pack
+        run: dotnet pack
+          --configuration Release
+          --output "${{github.workspace}}/artifacts/packages"
+          ${{ env.version_suffix_args}}
+
+      - name: Run unit tests
+        run: dotnet test
+          --configuration Release
+          --filter="TestCategory=Smoke&TestCategory!=Manual"
+          --logger "trx;LogFilePrefix=smoke"
+          --results-directory ${{github.workspace}}/artifacts/test-results
+          ${{ env.version_suffix_args}}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: build-artifacts
+          path: ${{github.workspace}}/artifacts
